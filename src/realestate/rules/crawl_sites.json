@@ -1,0 +1,58 @@
+{
+  "_meta": {
+    "description": "Cấu hình crawler theo từng web. Thêm web mới = thêm 1 phần tử. 'discovery' quyết định cách tìm URL tin: pagination (duyệt trang danh sách HTML) | sitemap (đọc sitemap công khai). Văn bản lấy từ detail_selector được nối giống hệt bộ dữ liệu gốc để source_templates.json đọc được.",
+    "ethics": "Tuân thủ robots.txt, 1 request/giây/web, không vượt cơ chế chặn bot hay đăng nhập. Web chặn (403/anti-bot) -> để enabled=false.",
+    "limits": "default_limit: 0 = không giới hạn (cào tới khi web hết tin); số dương = tối đa N tin mỗi web. max_pages: null = không giới hạn trang. Có thể ghi đè bằng --limit."
+  },
+  "default_limit": 0,
+  "min_text_length": 200,
+  "sites": [
+    {
+      "name": "bds",
+      "domain": "bds.com.vn",
+      "enabled": true,
+      "discovery": "pagination",
+      "page_url": "https://bds.com.vn/mua-ban-nha-dat-page{page}",
+      "start_page": 1,
+      "max_pages": null,
+      "listing_selector": ".item-nhadat",
+      "listing_link_selector": "a::attr(href)",
+      "detail_selector": ".primary.fll",
+      "exclude_selectors": [
+        ".box-product-related"
+      ]
+    },
+    {
+      "name": "radanhadat",
+      "domain": "radanhadat.vn",
+      "enabled": false,
+      "discovery": "sitemap",
+      "_note": "Sitemap công khai có ~830 tin, nhưng trang chi tiết chuyển hướng (302) về trang chủ khi crawler khai báo là bot -> site không cho bot đọc tin -> tắt. Không giả danh trình duyệt để vượt chặn. Dữ liệu radanhadat hiện có trong data/batches vẫn dùng bình thường.",
+      "sitemap_urls": [
+        "https://radanhadat.vn/sitemap/chi-tiet-bat-dong-san.xml"
+      ],
+      "detail_url_regex": "/tin-dang/.+chitiet-",
+      "detail_url_suffix": "?truoc-sap-nhap",
+      "detail_selector": ".listing-detail-left",
+      "exclude_selectors": []
+    },
+    {
+      "name": "batdongsan",
+      "domain": "batdongsan.com.vn",
+      "enabled": false,
+      "_note": "Trả 403 (hệ thống chống bot) với crawler -> tắt. Không vượt cơ chế chặn.",
+      "discovery": "pagination",
+      "page_url": "https://batdongsan.com.vn/nha-dat-ban/p{page}",
+      "start_page": 1,
+      "max_pages": null,
+      "listing_selector": ".js__card.js__card-full-web",
+      "listing_link_selector": "a::attr(href)",
+      "detail_selector": ".re__pr-info.pr-info.js__product-detail-web",
+      "exclude_selectors": [
+        ".js__video-listings-ldp-lazyload-container"
+      ]
+    }
+  ],
+  "block_after_bounces": 10,
+  "max_pending_per_site": 16
+}

@@ -1,0 +1,979 @@
+{
+  "_meta": {
+    "name": "vi_realestate_extraction_rules",
+    "version": "1.0.0",
+    "description": "Bộ luật trích xuất & chuẩn hóa thuộc tính tin rao BĐS tiếng Việt. Được RuleEngine nạp lúc chạy; sửa file này không cần sửa code.",
+    "regex_syntax": "Regex viết theo cú pháp chung Python/JS: nhóm tên dùng (?<name>...) (loader tự đổi sang (?P<name>...) cho Python). Không dùng \\w (khác nhau giữa 2 ngôn ngữ) — dùng {W}. Cờ mặc định: ignore-case + unicode.",
+    "placeholders": "{NUM} số có phân cách | {NL} không theo sau bởi chữ cái | {NB} không đứng sau chữ cái | {NDB} không đứng sau chữ số/dấu phân cách | {W} ký tự chữ/số"
+  },
+  "placeholders": {
+    "NUM": "\\d+(?:[.,]\\d+)*",
+    "NL": "(?![a-zà-ỹđ])",
+    "NB": "(?<![a-zà-ỹđ])",
+    "NDB": "(?<!\\d)(?<!\\d[.,])",
+    "W": "[0-9a-zà-ỹđ_]",
+    "NUMW": "\\d{1,2}|một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười"
+  },
+  "number": {
+    "thousand_separator_units": [
+      "triệu",
+      "tr",
+      "m2",
+      "đồng",
+      "vnd",
+      "vnđ",
+      "nghìn",
+      "ngàn"
+    ],
+    "_doc": "Một dấu phân cách + đúng 3 chữ số + đơn vị trong danh sách -> phân cách hàng nghìn ('1.200 triệu' = 1200). Ngược lại là thập phân ('2,99 tỷ')."
+  },
+  "money": {
+    "patterns": [
+      {
+        "name": "full_vnd",
+        "regex": "{NDB}(?<a>\\d{1,3}(?:[.,]\\d{3}){2,})\\s*(?:đồng|vnđ|vnd|đ){NL}",
+        "mode": "number",
+        "number_unit": "đồng",
+        "multiplier": 1
+      },
+      {
+        "name": "masked",
+        "_doc": "Giá che bớt chữ số. Có dấu phân cách hoặc đơn vị tỷ -> phần nguyên ('2.x tỷ' = 2 tỷ, '18x tỷ' = 18 tỷ); đơn vị triệu không phân cách -> giữ hàng ('5xx triệu' = 500 triệu). Luôn coi là xấp xỉ.",
+        "regex": "{NDB}(?<a>\\d+(?:[.,]\\d+)?)(?<sep>[.,])?(?<x>x{1,3})\\s*(?<unit>tỷ|tỉ|ty|triệu|tr){NL}",
+        "mode": "masked",
+        "unit_multipliers": {
+          "tỷ": 1000000000,
+          "tỉ": 1000000000,
+          "ty": 1000000000,
+          "triệu": 1000000,
+          "tr": 1000000
+        },
+        "confidence": 0.6
+      },
+      {
+        "name": "ty_trieu",
+        "_doc": "8 tỷ 500 triệu",
+        "regex": "{NDB}(?<a>\\d+)\\s*(?:tỷ|tỉ|ty)\\s*(?<b>\\d{1,3})\\s*(?:triệu|tr){NL}",
+        "mode": "int_plus",
+        "multiplier_a": 1000000000,
+        "multiplier_b": 1000000
+      },
+      {
+        "name": "ty_short",
+        "_doc": "8tỷ5, 8 tỷ 5, 3ty25, 8t5 — 'b' là phần thập phân của tỷ",
+        "regex": "{NDB}(?<a>\\d+)\\s*(?<u>tỷ|tỉ|ty|t)\\s*(?<b>\\d{1,3})(?!\\d|[.,]\\d|\\s*(?:m|tầng|tang|lầu|lau|l{NL}|pn|wc|phòng|ngủ|năm|tháng|ngày|km|%|x|căn|lô|tr))",
+        "mode": "decimal_join",
+        "multiplier": 1000000000,
+        "ambiguous_units": [
+          "t"
+        ],
+        "_ambiguous_doc": "'8t5' chỉ là 8,5 tỷ khi ngữ cảnh là giá; không có ngữ cảnh -> độ tin cậy thấp, cần rà soát"
+      },
+      {
+        "name": "ty",
+        "regex": "{NDB}(?<a>{NUM})\\s*(?:tỷ|tỉ|ty){NL}",
+        "mode": "number",
+        "number_unit": "tỷ",
+        "multiplier": 1000000000
+      },
+      {
+        "name": "trieu",
+        "regex": "{NDB}(?<a>{NUM})\\s*(?:triệu|tr){NL}",
+        "mode": "number",
+        "number_unit": "triệu",
+        "multiplier": 1000000
+      }
+    ],
+    "suffix_regex": "\\s*(?:đồng|vnđ|vnd|đ)?\\s*(?<per>/\\s*(?:m2|m²|m 2|tháng|th|năm|căn|lô|nền|công|sào|ha|m){NL})?",
+    "per_unit_roles": [
+      {
+        "contains": [
+          "thang",
+          "th",
+          "nam"
+        ],
+        "role": "rent_price",
+        "confidence": 0.85
+      },
+      {
+        "contains": [
+          "cong",
+          "sao",
+          "ha"
+        ],
+        "role": "price_per_area_unit",
+        "confidence": 0.85
+      },
+      {
+        "contains": [
+          "m"
+        ],
+        "role": "price_per_m2",
+        "confidence": 0.85
+      },
+      {
+        "contains": [
+          "can",
+          "lo",
+          "nen"
+        ],
+        "role": "price",
+        "confidence": 0.8
+      }
+    ],
+    "context_window": 45,
+    "near_window": 25,
+    "cues": {
+      "deposit": [
+        "coc",
+        "dat truoc",
+        "giu cho",
+        "booking"
+      ],
+      "other_money": [
+        "thanh toan",
+        "tra truoc",
+        "vay",
+        "ngan hang",
+        "ho tro",
+        "gop",
+        "chiet khau",
+        "giam",
+        "lai suat",
+        "phi ",
+        "thue ",
+        "doanh thu",
+        "dong tien",
+        "thu nhap",
+        "loi nhuan",
+        "von ",
+        "tien thue",
+        "cho thue",
+        "tang gia",
+        "tang them",
+        "qua tang",
+        "voucher",
+        "nhan ngay",
+        "mien",
+        "luong",
+        "ban kinh",
+        "tri gia",
+        "tien do",
+        "dot ",
+        "tra gop",
+        "moi thang",
+        "hang thang",
+        "lai ",
+        "thu ve",
+        "sinh loi",
+        "khoan vay",
+        "hoan tien",
+        "uu dai",
+        "tn ",
+        "xay ",
+        "xay dung",
+        "dat coc",
+        "cho vay",
+        "gia tri hd",
+        "hd thue",
+        "thue duoc",
+        "khai thac",
+        "doanh so"
+      ],
+      "price": [
+        "gia",
+        "ban ",
+        "chi ",
+        "con ",
+        "tong",
+        "chao",
+        "nhinh",
+        "tl",
+        "thuong luong",
+        "bao phi",
+        "ban gap",
+        "can ban",
+        "re ",
+        "khoang ",
+        "tam ",
+        "ha chao",
+        "co ",
+        "dong gia",
+        "gia tot",
+        "ngop"
+      ],
+      "after_other": [
+        "von",
+        "ban dau",
+        "dau tien",
+        "nhan nha",
+        "ky hd",
+        "ky hop dong",
+        "gop",
+        "moi thang",
+        "/thang",
+        "1 thang",
+        "mot thang",
+        "/ thang",
+        "hoan lai",
+        "chiet khau",
+        "tien coc",
+        "coc"
+      ]
+    },
+    "role_confidence": {
+      "deposit_near": 0.9,
+      "other_near": 0.8,
+      "price_near": 0.9,
+      "deposit_far": 0.6,
+      "unknown": 0.55,
+      "ambiguous_unit_max": 0.75,
+      "ambiguous_unit_no_price_context": 0.4
+    },
+    "price_selection": {
+      "_doc": "Thứ tự ưu tiên chọn giá bán khi có nhiều biểu thức tiền",
+      "role_order": [
+        "price",
+        "unknown_money"
+      ],
+      "prefer_title": true,
+      "min_sale_vnd": 50000000,
+      "max_sale_vnd": 2000000000000
+    },
+    "after_window": 18,
+    "_role_doc": "Vai trò = cue xuất hiện GẦN biểu thức tiền nhất trong cửa sổ near_window phía trước (vd 'giảm còn 3ty880' -> 'còn' gần hơn 'giảm' -> price). Nếu ngay sau là cue after_other (vd '136 triệu vốn ban đầu') -> other_money.",
+    "approx_cues": {
+      "_doc": "'nhỉnh 3 tỷ', 'chỉ hơn 900tr', 'chỉ từ 400 triệu', '7-8 tỷ' là giá xấp xỉ/cận dưới -> vẫn là giá nhưng độ tin cậy thấp hơn để giá chính xác khác trong bài được ưu tiên",
+      "before": [
+        "nhinh",
+        "hon ",
+        "tren ",
+        "tu ",
+        "chi tu",
+        "khoang ",
+        "tam ",
+        "co ",
+        "xap xi",
+        "gan ",
+        "duoi ",
+        "tam tam"
+      ],
+      "window": 10,
+      "confidence": 0.7,
+      "range_before_regex": "\\d\\s*(?:-|–|đến|tới)\\s*$"
+    },
+    "_after_doc": "after_other khớp theo ranh giới từ (tránh 'vốn' khớp trong 'triển vọng')."
+  },
+  "area": {
+    "regex": "{NDB}(?<n>{NUM})\\s*(?<u>m2|m²|m 2|mét vuông|met vuong|ha|hecta|héc ta|sào){NL}",
+    "unit_multipliers": {
+      "ha": 10000,
+      "hecta": 10000,
+      "héc ta": 10000,
+      "sào": 360
+    },
+    "context_window": 35,
+    "kind_cues": {
+      "land": [
+        "dat",
+        "cong nhan",
+        "khuon vien",
+        "lo ",
+        "tho cu",
+        "dt :",
+        "dien tich dat",
+        "so "
+      ],
+      "usable": [
+        "san",
+        "su dung",
+        "xay dung",
+        "dtsd",
+        "thong thuy",
+        "tim tuong",
+        "dtxd",
+        "tong dien tich san"
+      ]
+    },
+    "exclude_if_preceded_by": [
+      "/m",
+      "triệu/",
+      "tr/"
+    ],
+    "confidence": 0.85
+  },
+  "dimensions": {
+    "_doc": "4x15m, 4 x 12m, 5mx20m, (4,5 x 18) -> chiều ngang (nhỏ hơn) và chiều dài",
+    "regex": "(?<![\\d.,a-zà-ỹ])(?<w>\\d+(?:[.,]\\d+)?)\\s*(?:m\\s*)?[x×*]\\s*(?<l>\\d+(?:[.,]\\d+)?)(?:\\s*m(?![a-z0-9²]))?",
+    "max_width": 200,
+    "max_length": 500,
+    "confidence": 0.75
+  },
+  "numeric_entities": [
+    {
+      "label": "FRONTAGE",
+      "unit": "m",
+      "type": "float",
+      "min": 0.5,
+      "max": 500,
+      "confidence": 0.85,
+      "regex": "(?:ngang|chiều ngang|mặt tiền|mặt tiền rộng|mt|mặt tiền khủng|ngang rộng)\\s*:?\\s*(?<n>\\d+(?:[.,]\\d+)?)\\s*m{NL}"
+    },
+    {
+      "label": "LENGTH",
+      "unit": "m",
+      "type": "float",
+      "min": 1,
+      "max": 500,
+      "confidence": 0.85,
+      "regex": "(?:dài|chiều dài|sâu)\\s*:?\\s*(?<n>\\d+(?:[.,]\\d+)?)\\s*m{NL}"
+    },
+    {
+      "label": "BEDROOM",
+      "type": "int",
+      "min": 1,
+      "max": 50,
+      "confidence": 0.9,
+      "regex": "{NDB}(?<n>{NUMW})\\s*(?:pn|phòng ngủ|phong ngu|p\\.?\\s?ngủ|phòng ngũ|ngủ|bedroom|bedrooms|br|phòng nghỉ){NL}"
+    },
+    {
+      "label": "BEDROOM",
+      "type": "int",
+      "min": 1,
+      "max": 50,
+      "confidence": 0.85,
+      "_doc": "Phòng ngủ: 3 / số phòng ngủ 3",
+      "regex": "(?:phòng ngủ|pn|số phòng ngủ|số pn)\\s*:\\s*(?<n>\\d{1,2})(?![\\d.,])"
+    },
+    {
+      "label": "BATHROOM",
+      "type": "int",
+      "min": 1,
+      "max": 50,
+      "confidence": 0.9,
+      "regex": "{NDB}(?<n>{NUMW})\\s*(?:wc|toilet|toilets|phòng tắm|phòng vệ sinh|nhà vệ sinh|vệ sinh|vs|nvs|phòng wc|phòng toilet|phòng vs|nhà tắm|wc riêng|toilet riêng|bathroom|bathrooms){NL}"
+    },
+    {
+      "label": "BATHROOM",
+      "type": "int",
+      "min": 1,
+      "max": 50,
+      "confidence": 0.85,
+      "regex": "(?:wc|toilet|phòng tắm|nhà vệ sinh|phòng vệ sinh|số toilet|số wc|vệ sinh)\\s*:\\s*(?<n>\\d{1,2})(?![\\d.,])"
+    },
+    {
+      "label": "FLOOR",
+      "type": "int",
+      "min": 1,
+      "max": 100,
+      "confidence": 0.85,
+      "regex": "{NDB}(?<n>\\d{1,2})\\s*(?:tầng|tang|tấm|lầu|tầng lầu){NL}"
+    },
+    {
+      "label": "FLOOR",
+      "type": "int",
+      "min": 1,
+      "max": 100,
+      "confidence": 0.6,
+      "meta": {
+        "floor_level": true
+      },
+      "_doc": "'tầng 15' (vị trí căn hộ) khác '15 tầng' (số tầng)",
+      "regex": "(?:tầng|lầu)\\s+(?:số\\s+)?(?<n>\\d{1,2})(?![\\d.,]|\\s*(?:tầng|lầu|m))"
+    }
+  ],
+  "floor_composite": {
+    "_doc": "1 trệt 2 lầu -> 3 tầng ; 1T2L ; trệt, lửng, 2 lầu ; 1 trệt 1 lửng 3 lầu",
+    "regex": "(?:(?<t>\\d)\\s*)?(?:trệt|tret|t)\\s*(?:,|\\+|và|-)?\\s*(?:(?<lung>\\d?)\\s*(?:lửng|lung|gác lửng)\\s*(?:,|\\+|và|-)?\\s*)?(?<l>\\d{1,2})\\s*(?:lầu|lau|l){NL}",
+    "require_any": [
+      "trệt",
+      "tret",
+      "^\\d?\\s*t\\s*\\d{1,2}\\s*l$"
+    ],
+    "count_mezzanine": false,
+    "confidence": 0.9
+  },
+  "direction": {
+    "regex": "(?<cue>hướng|huong|view|cửa chính|cửa)\\s*:?\\s*(?:nhà\\s*|cửa\\s*|chính\\s*|ban công\\s*|bancông\\s*|bankong\\s*|bc\\s*|đất\\s*|mặt tiền\\s*)?:?\\s*(?<d>đông nam|đông bắc|tây nam|tây bắc|đông|tây|nam|bắc|đn|đb|tn|tb|dn|db){NL}",
+    "values": [
+      "Đông Nam",
+      "Đông Bắc",
+      "Tây Nam",
+      "Tây Bắc",
+      "Đông",
+      "Tây",
+      "Nam",
+      "Bắc"
+    ],
+    "cue_confidence": {
+      "default": 0.9,
+      "view": 0.5,
+      "ban cong": 0.6,
+      "bankong": 0.6,
+      "bc": 0.6
+    },
+    "abbreviations": {
+      "dn": "Đông Nam",
+      "db": "Đông Bắc",
+      "tn": "Tây Nam",
+      "tb": "Tây Bắc"
+    }
+  },
+  "location": {
+    "regex": "(?<![0-9a-zà-ỹđ])(?:quận|q\\.|huyện|phường|p\\.|xã|thị xã|thị trấn|tp\\.?|thành phố|tỉnh|đường|phố)\\s*(?:\\d{1,2}(?!\\d)|{W}+(?:\\s{W}+){0,3})",
+    "prefix_regex": "^(?:quận|q\\.|huyện|phường|p\\.|xã|thị xã|thị trấn|tp\\.?|thành phố|tỉnh|đường|phố)\\s*",
+    "require_capitalized_name": true,
+    "confidence": 0.6
+  },
+  "transaction": {
+    "items": [
+      {
+        "code": "rent",
+        "patterns": [
+          "cho thuê",
+          "cần thuê",
+          "thuê nguyên căn"
+        ]
+      },
+      {
+        "code": "sale",
+        "patterns": [
+          "cần bán",
+          "bán gấp",
+          "bán nhanh",
+          "chính chủ bán",
+          "bán",
+          "sang nhượng",
+          "chuyển nhượng"
+        ]
+      }
+    ],
+    "confidence": 0.8
+  },
+  "lexicons": {
+    "LEGAL_STATUS": {
+      "confidence": 0.85,
+      "items": [
+        {
+          "code": "so_hong_rieng",
+          "label": "Sổ hồng riêng",
+          "patterns": [
+            "sổ hồng riêng",
+            "shr",
+            "sổ riêng",
+            "sổ hồng chính chủ",
+            "sổ hồng cá nhân",
+            "sổ hồng hoàn công",
+            "sổ hồng lâu dài",
+            "sổ hồng vĩnh viễn"
+          ]
+        },
+        {
+          "code": "so_do_rieng",
+          "label": "Sổ đỏ riêng",
+          "patterns": [
+            "sổ đỏ riêng",
+            "sổ đỏ chính chủ",
+            "sổ đỏ vĩnh viễn",
+            "sổ đỏ bìa riêng",
+            "sổ đỏ cá nhân",
+            "sổ đỏ lâu dài",
+            "sổ đỏ trao tay"
+          ]
+        },
+        {
+          "code": "so_hong",
+          "label": "Sổ hồng",
+          "patterns": [
+            "sổ hồng"
+          ]
+        },
+        {
+          "code": "so_do",
+          "label": "Sổ đỏ",
+          "patterns": [
+            "sổ đỏ",
+            "sđcc",
+            "sdcc",
+            "sổ đẹp"
+          ]
+        },
+        {
+          "code": "so_chung",
+          "label": "Sổ chung",
+          "patterns": [
+            "sổ chung",
+            "đồng sở hữu",
+            "sổ hồng chung"
+          ]
+        },
+        {
+          "code": "hop_dong_mua_ban",
+          "label": "Hợp đồng mua bán",
+          "patterns": [
+            "hợp đồng mua bán",
+            "hđmb",
+            "hdmb"
+          ]
+        },
+        {
+          "code": "giay_tay",
+          "label": "Giấy tay / vi bằng",
+          "patterns": [
+            "giấy tay",
+            "vi bằng"
+          ]
+        },
+        {
+          "code": "cho_so",
+          "label": "Đang chờ sổ",
+          "patterns": [
+            "đang chờ sổ",
+            "chờ sổ",
+            "sắp có sổ",
+            "đang làm sổ",
+            "sắp ra sổ"
+          ]
+        },
+        {
+          "code": "thue_dai_han",
+          "label": "Thuê / sở hữu có thời hạn",
+          "patterns": [
+            "hợp đồng thuê dài hạn",
+            "sở hữu 50 năm",
+            "lâu dài 50 năm",
+            "sở hữu có thời hạn"
+          ]
+        },
+        {
+          "code": "co_so",
+          "label": "Có sổ (chưa rõ loại)",
+          "patterns": [
+            "pháp lý rõ ràng",
+            "pháp lý chuẩn",
+            "pháp lý minh bạch",
+            "pháp lý đầy đủ",
+            "pháp lý sạch",
+            "sổ sẵn",
+            "có sổ",
+            "sổ sách đầy đủ",
+            "pháp lý an toàn",
+            "pháp lý hoàn chỉnh"
+          ]
+        }
+      ]
+    },
+    "POSITION": {
+      "confidence": 0.85,
+      "items": [
+        {
+          "code": "lo_goc",
+          "label": "Lô góc",
+          "patterns": [
+            "lô góc",
+            "căn góc",
+            "nhà góc",
+            "2 mặt tiền",
+            "hai mặt tiền",
+            "2 mt",
+            "2 mặt hẻm",
+            "2 mặt thoáng",
+            "3 mặt tiền"
+          ]
+        },
+        {
+          "code": "mat_tien",
+          "label": "Mặt tiền",
+          "patterns": [
+            "mặt tiền",
+            "mặt phố",
+            "mặt đường",
+            "mtkd",
+            "mặt tiền kinh doanh",
+            "shophouse",
+            "mặt ngõ kinh doanh"
+          ]
+        },
+        {
+          "code": "hem_xe_tai",
+          "label": "Hẻm xe tải",
+          "patterns": [
+            "hẻm xe tải",
+            "hxt",
+            "ngõ xe tải",
+            "đường xe tải",
+            "ngõ ô tô tải"
+          ]
+        },
+        {
+          "code": "hem_xe_hoi",
+          "label": "Hẻm xe hơi / ô tô vào",
+          "patterns": [
+            "hẻm xe hơi",
+            "hxh",
+            "hẻm ô tô",
+            "hẻm oto",
+            "ngõ ô tô",
+            "ngõ oto",
+            "ô tô vào nhà",
+            "ô tô đỗ cửa",
+            "ô tô tránh",
+            "ô tô đậu cửa",
+            "xe hơi vào nhà",
+            "ô tô để trong nhà",
+            "ô tô đỗ trong nhà",
+            "oto vào nhà",
+            "ô tô vào tận nhà",
+            "ô tô đỗ ngày đêm",
+            "đường ô tô",
+            "đường xe hơi",
+            "ô tô vào tận",
+            "ô tô ngủ trong nhà",
+            "xe hơi đỗ cửa"
+          ]
+        },
+        {
+          "code": "hem",
+          "label": "Hẻm / ngõ",
+          "patterns": [
+            "hẻm",
+            "ngõ",
+            "kiệt",
+            "ngách"
+          ]
+        }
+      ]
+    },
+    "FEATURE": {
+      "confidence": 0.85,
+      "items": [
+        {
+          "code": "gara",
+          "label": "Gara ô tô",
+          "patterns": [
+            "gara",
+            "garage",
+            "ga ra",
+            "hầm để xe",
+            "chỗ đậu ô tô",
+            "ô tô để trong nhà",
+            "ô tô đỗ trong nhà",
+            "để ô tô trong nhà"
+          ]
+        },
+        {
+          "code": "thang_may",
+          "label": "Thang máy",
+          "patterns": [
+            "thang máy"
+          ]
+        },
+        {
+          "code": "ho_boi",
+          "label": "Hồ bơi",
+          "patterns": [
+            "hồ bơi",
+            "bể bơi"
+          ]
+        },
+        {
+          "code": "noi_that",
+          "label": "Nội thất",
+          "patterns": [
+            "full nội thất",
+            "full nt",
+            "nội thất cao cấp",
+            "nội thất đầy đủ",
+            "tặng nội thất",
+            "full đồ",
+            "nội thất"
+          ]
+        },
+        {
+          "code": "san_thuong",
+          "label": "Sân thượng",
+          "patterns": [
+            "sân thượng"
+          ]
+        },
+        {
+          "code": "ban_cong",
+          "label": "Ban công",
+          "patterns": [
+            "ban công"
+          ]
+        },
+        {
+          "code": "san_vuon",
+          "label": "Sân vườn",
+          "patterns": [
+            "sân vườn",
+            "sân rộng",
+            "sân trước",
+            "sân sau"
+          ]
+        },
+        {
+          "code": "view_nuoc",
+          "label": "View sông/hồ/biển",
+          "patterns": [
+            "view sông",
+            "view hồ",
+            "view biển",
+            "ven sông",
+            "giáp sông",
+            "view kênh",
+            "view hồ tây",
+            "sát biển"
+          ]
+        },
+        {
+          "code": "gan_tien_ich",
+          "label": "Gần tiện ích",
+          "patterns": [
+            "gần chợ",
+            "gần trường",
+            "gần bệnh viện",
+            "gần siêu thị",
+            "tiện ích xung quanh",
+            "tiện ích đầy đủ"
+          ]
+        },
+        {
+          "code": "an_ninh",
+          "label": "An ninh",
+          "patterns": [
+            "an ninh",
+            "bảo vệ 24/7"
+          ]
+        }
+      ]
+    },
+    "PROPERTY_TYPE": {
+      "confidence": 0.85,
+      "items": [
+        {
+          "code": "apartment",
+          "label": "Căn hộ chung cư",
+          "patterns": [
+            "căn hộ",
+            "chung cư",
+            "penthouse",
+            "duplex",
+            "officetel",
+            "condotel",
+            "căn studio"
+          ]
+        },
+        {
+          "code": "villa",
+          "label": "Biệt thự / liền kề",
+          "patterns": [
+            "biệt thự",
+            "liền kề",
+            "villa"
+          ]
+        },
+        {
+          "code": "townhouse",
+          "label": "Nhà mặt phố",
+          "patterns": [
+            "shophouse",
+            "nhà mặt phố",
+            "nhà mặt tiền",
+            "nhà phố thương mại",
+            "nhà mặt đường"
+          ]
+        },
+        {
+          "code": "project_land",
+          "label": "Đất nền dự án",
+          "patterns": [
+            "đất nền dự án",
+            "đất nền"
+          ]
+        },
+        {
+          "code": "land",
+          "label": "Đất",
+          "patterns": [
+            "lô đất",
+            "mảnh đất",
+            "thửa đất",
+            "đất thổ cư",
+            "đất ở",
+            "bán đất",
+            "đất vườn",
+            "đất nông nghiệp",
+            "đất trống"
+          ]
+        },
+        {
+          "code": "warehouse",
+          "label": "Kho / xưởng",
+          "patterns": [
+            "nhà xưởng",
+            "kho xưởng",
+            "nhà kho"
+          ]
+        },
+        {
+          "code": "house",
+          "label": "Nhà riêng",
+          "patterns": [
+            "nhà riêng",
+            "nhà phố",
+            "nhà hẻm",
+            "nhà ngõ",
+            "nhà trong hẻm",
+            "căn nhà",
+            "ngôi nhà",
+            "bán nhà",
+            "nhà cấp 4"
+          ]
+        }
+      ],
+      "extra_labels": {
+        "resort": "Trang trại / nghỉ dưỡng",
+        "office": "Văn phòng",
+        "other": "Nhà đất (khác)"
+      }
+    }
+  },
+  "validation": {
+    "_doc": "Kiểm tra miền giá trị (mục 10.4). Ngoài khoảng -> NEEDS_REVIEW, không tự sửa.",
+    "ranges": {
+      "price_vnd": [
+        50000000,
+        2000000000000
+      ],
+      "rent_price_vnd": [
+        500000,
+        10000000000
+      ],
+      "area_m2": [
+        5,
+        5000000
+      ],
+      "frontage_m": [
+        1,
+        300
+      ],
+      "length_m": [
+        2,
+        1000
+      ],
+      "bedrooms": [
+        1,
+        50
+      ],
+      "bathrooms": [
+        1,
+        50
+      ],
+      "floors": [
+        1,
+        100
+      ],
+      "price_per_m2_vnd": [
+        500000,
+        2000000000
+      ]
+    },
+    "price_per_m2_by_type": {
+      "_doc": "Ngưỡng đơn giá VND/m2 hợp lý theo loại hình (giá trên diện tích tin rao). Ngoài khoảng -> giá/diện tích NEEDS_REVIEW và không được tính là thỏa điều kiện giá bắt buộc.",
+      "apartment": [8000000, 600000000],
+      "house": [3000000, 1500000000],
+      "townhouse": [5000000, 2000000000],
+      "villa": [5000000, 1500000000]
+    },
+    "conflict_tolerance": {
+      "area_m2": 0.1,
+      "price_vnd": 0.05,
+      "bedrooms": 0,
+      "bathrooms": 0,
+      "floors": 0,
+      "frontage_m": 0.1,
+      "length_m": 0.1
+    },
+    "ignore_text_fields_for_types": {
+      "land": [
+        "floors",
+        "bedrooms",
+        "bathrooms",
+        "floor_level"
+      ],
+      "project_land": [
+        "floors",
+        "bedrooms",
+        "bathrooms",
+        "floor_level"
+      ],
+      "apartment": [
+        "floors"
+      ]
+    }
+  },
+  "number_words": {
+    "một": 1,
+    "hai": 2,
+    "ba": 3,
+    "bốn": 4,
+    "năm": 5,
+    "sáu": 6,
+    "bảy": 7,
+    "tám": 8,
+    "chín": 9,
+    "mười": 10
+  },
+  "numeric_context_penalties": [
+    {
+      "_doc": "Mỗi tầng có 2 phòng ngủ -> không phải tổng số phòng",
+      "labels": [
+        "BEDROOM",
+        "BATHROOM"
+      ],
+      "before_regex": "mỗi (?:tầng|lầu|phòng)[^.;]{0,25}$",
+      "confidence": 0.35,
+      "note": "per_floor"
+    },
+    {
+      "_doc": "Tầng 2: phòng khách + 1 phòng ngủ -> liệt kê theo tầng",
+      "labels": [
+        "BEDROOM",
+        "BATHROOM"
+      ],
+      "before_regex": "(?:tầng|lầu) \\d+(?:\\s*(?:,|và|-)\\s*\\d+)*\\s*(?::|gồm|có|bao gồm|là)[^.;]{0,30}$",
+      "confidence": 0.4,
+      "note": "per_floor"
+    },
+    {
+      "_doc": "Dự án giới thiệu nhiều loại căn: 'từ 1 phòng ngủ đến 3', 'căn hộ 2, 3 phòng ngủ'",
+      "labels": [
+        "BEDROOM",
+        "BATHROOM"
+      ],
+      "before_regex": "(?:từ|loại|các căn|gồm các loại|đa dạng)\\s*$|\\d\\s*(?:,|-|đến|tới|và|\\+)\\s*$",
+      "confidence": 0.4,
+      "note": "range_listing"
+    },
+    {
+      "_doc": "Tòa/TTTM/trung tâm 5 tầng -> số tầng công trình khác",
+      "labels": [
+        "FLOOR"
+      ],
+      "before_regex": "(?:tòa|toà|block|tháp|trung tâm thương mại|tttm|siêu thị|khách sạn|bệnh viện|trường|văn phòng|cao ốc|chung cư|dự án|hầm)[^.;,]{0,20}$",
+      "confidence": 0.35,
+      "note": "other_building"
+    },
+    {
+      "_doc": "Xây được 7 tầng / cho phép xây 5 tầng -> tiềm năng, không phải hiện trạng",
+      "labels": [
+        "FLOOR"
+      ],
+      "before_regex": "(?:xây được|xây dựng được|cho phép xây|được xây|có thể xây|xây tối đa|phép xây|xây lên)[^.;]{0,15}$",
+      "confidence": 0.35,
+      "note": "buildable"
+    }
+  ]
+}

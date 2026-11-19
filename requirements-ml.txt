@@ -1,0 +1,8 @@
+# Huấn luyện / suy luận PhoBERT NER (tùy chọn — thiếu thì hệ thống chạy Rule-only)
+-r requirements.txt
+torch>=2.2
+transformers>=4.40
+accelerate>=0.30
+sentencepiece
+# Export sang Neo4j (tùy chọn)
+neo4j>=5.20

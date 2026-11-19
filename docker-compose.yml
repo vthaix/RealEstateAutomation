@@ -1,0 +1,48 @@
+# Luồng 3 (web) + Neo4j:   docker compose up -d --build
+#   Web gợi ý nhà : http://localhost:8080        (đổi bằng biến APP_PORT trong .env)
+#   Neo4j Browser : http://localhost:7474        (neo4j / realestate123)
+# Luồng 1 (cào) và luồng 2 (xử lý) chạy ở terminal bằng container tạm dùng chung image:
+#   docker compose run --rm app python scripts/crawl.py
+#   docker compose run --rm app python scripts/process.py
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: realestate-neo4j
+    ports:
+      - "7474:7474"   # Neo4j Browser
+      - "7687:7687"   # Bolt
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-realestate123}
+      NEO4J_server_memory_heap_max__size: 1G
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p $${NEO4J_AUTH#neo4j/} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  app:
+    build: .
+    image: realestate-app:latest
+    container_name: realestate-app
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-realestate123}
+      TZ: ICT-7                     # giờ Việt Nam (UTC+7) cho tên file batch & log
+    volumes:
+      - ./data:/app/data            # data/batches (thô), data/processed, data/kg dùng chung với máy host
+      - ./src/realestate/rules:/app/src/realestate/rules   # sửa luật JSON không cần build lại
+
+volumes:
+  neo4j_data:

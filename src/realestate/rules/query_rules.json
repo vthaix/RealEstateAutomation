@@ -1,0 +1,495 @@
+{
+  "_meta": {
+    "name": "vi_realestate_query_rules",
+    "version": "1.0.0",
+    "description": "Luật phân tích câu yêu cầu tìm nhà (fallback khi không có LLM + kiểm tra hậu kỳ kết quả LLM). Giá trị số/thuộc tính được nhận diện bằng extraction_rules.json; file này chỉ chứa luật về toán tử, tính bắt buộc và mức ưu tiên."
+  },
+  "placeholders": {
+    "NUM": "\\d+(?:[.,]\\d+)*",
+    "NL": "(?![a-zà-ỹđ])",
+    "NB": "(?<![a-zà-ỹđ])",
+    "W": "[0-9a-zà-ỹđ_]"
+  },
+  "clause_split_regex": "\\s*(?:(?<!\\d),|,(?!\\d)|;|\\.(?!\\d)|\\n|\\+|(?<![a-zà-ỹđ])(?:và|nhưng|còn|đồng thời|ngoài ra)(?![a-zà-ỹđ]))\\s*",
+  "hard_cues": [
+    "bắt buộc",
+    "phải có",
+    "phải là",
+    "phải ở",
+    "phải",
+    "chỉ ở",
+    "chỉ lấy",
+    "chỉ tìm",
+    "chỉ cần ở",
+    "chỉ",
+    "không chấp nhận",
+    "nhất định",
+    "yêu cầu",
+    "tối thiểu",
+    "tối đa",
+    "không quá",
+    "không vượt quá",
+    "không dưới",
+    "ít nhất",
+    "không thể thiếu",
+    "buộc phải"
+  ],
+  "soft_cues": [
+    "càng tốt",
+    "thì tốt",
+    "thì càng tốt",
+    "ưu tiên",
+    "mong muốn",
+    "nếu được",
+    "nếu có",
+    "có thể",
+    "tốt nhất là",
+    "thích",
+    "có thì tốt",
+    "càng",
+    "muốn",
+    "hy vọng",
+    "lý tưởng",
+    "nếu",
+    "gần",
+    "linh hoạt",
+    "dễ chịu",
+    "thương lượng"
+  ],
+  "negation_cues": [
+    "không muốn",
+    "không lấy",
+    "tránh",
+    "không chấp nhận",
+    "trừ",
+    "không phải",
+    "không cần",
+    "đừng"
+  ],
+  "operators": {
+    "GTE": [
+      "ít nhất",
+      "tối thiểu",
+      "trên",
+      "từ",
+      "không dưới",
+      "hơn",
+      "lớn hơn",
+      ">=",
+      ">",
+      "trở lên",
+      "ít ra",
+      "tối thiểu là"
+    ],
+    "LTE": [
+      "tối đa",
+      "không quá",
+      "dưới",
+      "đổ lại",
+      "trở xuống",
+      "không vượt quá",
+      "nhỏ hơn",
+      "<=",
+      "<",
+      "đổ xuống",
+      "trong vòng",
+      "max"
+    ],
+    "APPROX": [
+      "khoảng",
+      "tầm",
+      "cỡ",
+      "xấp xỉ",
+      "quanh",
+      "chừng",
+      "~",
+      "loanh quanh",
+      "tầm tầm",
+      "hơn kém"
+    ],
+    "EQ": [
+      "đúng",
+      "chính xác",
+      "bằng"
+    ],
+    "UNRESOLVED": [
+      "có thể"
+    ]
+  },
+  "operator_suffix": {
+    "GTE": [
+      "trở lên",
+      "trở lên nữa",
+      "đổ lên"
+    ],
+    "LTE": [
+      "đổ lại",
+      "trở xuống",
+      "đổ xuống",
+      "trở lại"
+    ]
+  },
+  "default_operator": {
+    "price": "APPROX",
+    "area": "APPROX",
+    "bedrooms": "GTE",
+    "bathrooms": "GTE",
+    "floors": "APPROX",
+    "frontage": "GTE",
+    "location": "IN_AREA",
+    "direction": "IN_SET",
+    "legal_status": "IN_SET",
+    "property_type": "IN_SET",
+    "transaction_type": "EQ",
+    "position": "HAS",
+    "feature": "HAS"
+  },
+  "default_group": {
+    "_doc": "Nhóm mặc định khi câu không có tín hiệu bắt buộc/linh hoạt. Địa điểm & loại hình nêu trực tiếp được xem là bắt buộc (mục 11.5). Giới hạn trên/dưới (tối đa, dưới...) là bắt buộc.",
+    "by_attribute": {
+      "location": "HARD",
+      "property_type": "HARD",
+      "transaction_type": "HARD"
+    },
+    "by_operator": {
+      "LTE": "HARD",
+      "GTE": "HARD",
+      "RANGE": "HARD",
+      "NOT_IN": "HARD"
+    },
+    "fallback": "SOFT"
+  },
+  "operator_hardness": {
+    "_doc": "Cụm từ giới hạn 'mềm' (trên/dưới/từ/hơn) chỉ coi là HARD nếu không có tín hiệu linh hoạt; 'tối đa/tối thiểu/không quá' luôn HARD.",
+    "strong": [
+      "tối đa",
+      "tối thiểu",
+      "không quá",
+      "không vượt quá",
+      "không dưới",
+      "ít nhất",
+      "ít ra"
+    ]
+  },
+  "priority_levels": [
+    {
+      "level": "VERY_HIGH",
+      "patterns": [
+        "rất quan trọng",
+        "cực kỳ quan trọng",
+        "quan trọng nhất",
+        "rất cần",
+        "nhất định phải",
+        "rất ưu tiên",
+        "ưu tiên hàng đầu",
+        "ưu tiên số 1",
+        "quan trọng hàng đầu",
+        "cực kỳ cần"
+      ]
+    },
+    {
+      "level": "HIGH",
+      "patterns": [
+        "quan trọng",
+        "ưu tiên",
+        "rất muốn",
+        "rất thích",
+        "ưu tiên cao"
+      ]
+    },
+    {
+      "level": "MEDIUM",
+      "patterns": [
+        "muốn",
+        "mong muốn",
+        "thích",
+        "hy vọng",
+        "lý tưởng",
+        "càng tốt",
+        "thì càng tốt",
+        "càng rộng càng tốt"
+      ]
+    },
+    {
+      "level": "LOW",
+      "patterns": [
+        "thì tốt",
+        "có thì tốt",
+        "nếu được",
+        "nếu có",
+        "có thể",
+        "cũng được",
+        "thêm"
+      ]
+    },
+    {
+      "level": "VERY_LOW",
+      "patterns": [
+        "không quan trọng lắm",
+        "sao cũng được",
+        "không bắt buộc",
+        "có cũng được",
+        "tùy",
+        "không quan trọng",
+        "không cần thiết lắm"
+      ]
+    }
+  ],
+  "attribute_value_patterns": [
+    {
+      "attribute": "bathrooms",
+      "regex": "(?:phòng tắm|wc|toilet|nhà vệ sinh|vệ sinh)(?:\\s*(?:thì|có|là|:|khoảng|tầm|ít nhất|tối thiểu|tối đa|có thể|chắc|cũng|từ|trên|dưới|không quá))*\\s*(?<n>\\d{1,2})(?![\\d.,]|\\s*(?:tỷ|triệu|m))"
+    },
+    {
+      "attribute": "bedrooms",
+      "regex": "(?:phòng ngủ|pn)(?:\\s*(?:thì|có|là|:|khoảng|tầm|ít nhất|tối thiểu|tối đa|có thể|chắc|cũng|từ|trên|dưới|không quá))*\\s*(?<n>\\d{1,2})(?![\\d.,]|\\s*(?:tỷ|triệu|m))"
+    },
+    {
+      "attribute": "floors",
+      "regex": "(?:số tầng|tầng)(?:\\s*(?:thì|có|là|:|khoảng|tầm|ít nhất|tối thiểu|tối đa|có thể|chắc|cũng|từ|trên|dưới|không quá))*\\s*(?<n>\\d{1,2})(?![\\d.,])"
+    },
+    {
+      "attribute": "area",
+      "regex": "(?:diện tích|dt|rộng)(?:\\s*(?:thì|có|là|:|khoảng|tầm|ít nhất|tối thiểu|tối đa|có thể|chắc|cũng|từ|trên|dưới|không quá))*\\s*(?<n>{NUM})(?![\\d.,]|\\s*(?:tỷ|triệu|tr|m2|m²|m))"
+    },
+    {
+      "attribute": "price",
+      "regex": "(?:giá|ngân sách|tài chính|budget|tiền)(?:\\s*(?:thì|có|là|:|khoảng|tầm|ít nhất|tối thiểu|tối đa|có thể|chắc|cũng|từ|trên|dưới|không quá))*\\s*(?<n>{NUM})\\s*(?<u>tỷ|tỉ|triệu|tr|t)?(?![\\d.,])",
+      "unit_default": "tỷ"
+    }
+  ],
+  "location": {
+    "_doc": "Địa điểm trong câu truy vấn thường viết thường (quận 3, q7, thủ đức). Ưu tiên khớp gazetteer lấy từ Knowledge Graph; regex dưới đây dùng khi chưa có KG.",
+    "regex": "(?<![0-9a-zà-ỹđ])(?:(?<prefix>quận|huyện|phường|xã|thị xã|thị trấn|thành phố|tỉnh|tp\\.?)(?![a-zà-ỹđ])\\s*(?<name>\\d{1,2}(?!\\d)|[a-zà-ỹđ]+(?:\\s[a-zà-ỹđ]+){0,3})|(?<prefix2>q|p)\\.?\\s*(?<num>\\d{1,2})(?!\\d))",
+    "stop_words": [
+      "giá",
+      "diện",
+      "có",
+      "khoảng",
+      "tầm",
+      "dưới",
+      "trên",
+      "ưu",
+      "phải",
+      "thì",
+      "nhà",
+      "căn",
+      "với",
+      "gần",
+      "và",
+      "khu",
+      "cần",
+      "muốn",
+      "tìm",
+      "mua",
+      "bán",
+      "thuê",
+      "rộng",
+      "tối",
+      "ít",
+      "sổ",
+      "hướng",
+      "mặt",
+      "hẻm",
+      "đường",
+      "là",
+      "để",
+      "cho",
+      "một",
+      "chỉ",
+      "bắt",
+      "không",
+      "càng",
+      "tốt",
+      "phòng",
+      "lầu",
+      "tầng",
+      "pn",
+      "wc",
+      "m2",
+      "tỷ",
+      "triệu",
+      "nữa",
+      "quận",
+      "huyện",
+      "phường",
+      "xã",
+      "tỉnh",
+      "thành",
+      "tp",
+      "ở",
+      "tại"
+    ],
+    "generic_prefixes": [],
+    "province_aliases": {
+      "sài gòn": "Hồ Chí Minh",
+      "sg": "Hồ Chí Minh",
+      "hcm": "Hồ Chí Minh",
+      "tphcm": "Hồ Chí Minh",
+      "tp hcm": "Hồ Chí Minh",
+      "tp.hcm": "Hồ Chí Minh",
+      "hà nội": "Hà Nội",
+      "hn": "Hà Nội",
+      "đà nẵng": "Đà Nẵng"
+    },
+    "soft_cues": [
+      "gần",
+      "lân cận",
+      "quanh",
+      "khu vực lân cận",
+      "ưu tiên"
+    ]
+  },
+  "tolerances": {
+    "_doc": "Dung sai mặc định cho hàm tiện ích xấp xỉ / vượt ngưỡng (mục 12.3). relative: tỉ lệ theo target; absolute: tối thiểu.",
+    "price": {
+      "relative": 0.15,
+      "absolute": 200000000
+    },
+    "area": {
+      "relative": 0.2,
+      "absolute": 5
+    },
+    "bedrooms": {
+      "relative": 0,
+      "absolute": 1
+    },
+    "bathrooms": {
+      "relative": 0,
+      "absolute": 1
+    },
+    "floors": {
+      "relative": 0,
+      "absolute": 1
+    },
+    "frontage": {
+      "relative": 0.2,
+      "absolute": 1
+    }
+  },
+  "direction_similarity": {
+    "_doc": "Bảng tương đồng hướng định nghĩa trước (mục 12.3 - tiêu chí phân loại). Hướng kề nhau = 0.5.",
+    "adjacent_score": 0.5,
+    "ring": [
+      "Bắc",
+      "Đông Bắc",
+      "Đông",
+      "Đông Nam",
+      "Nam",
+      "Tây Nam",
+      "Tây",
+      "Tây Bắc"
+    ]
+  },
+  "legal_similarity": {
+    "_doc": "Người dùng muốn 'sổ hồng/sổ đỏ' -> loại sổ riêng tương ứng cũng khớp.",
+    "groups": {
+      "so_hong": [
+        "so_hong",
+        "so_hong_rieng"
+      ],
+      "so_do": [
+        "so_do",
+        "so_do_rieng"
+      ],
+      "co_so": [
+        "so_hong",
+        "so_hong_rieng",
+        "so_do",
+        "so_do_rieng",
+        "co_so"
+      ],
+      "so_rieng": [
+        "so_hong_rieng",
+        "so_do_rieng"
+      ]
+    }
+  },
+  "property_type_similarity": {
+    "house": {
+      "townhouse": 0.7,
+      "villa": 0.5
+    },
+    "townhouse": {
+      "house": 0.7,
+      "villa": 0.5
+    },
+    "villa": {
+      "house": 0.5,
+      "townhouse": 0.5
+    },
+    "land": {
+      "project_land": 0.8
+    },
+    "project_land": {
+      "land": 0.8
+    }
+  },
+  "range": {
+    "_doc": "từ 3 đến 5 tỷ, 60-80m2, 2-3 phòng ngủ -> RANGE; đơn vị quyết định thuộc tính",
+    "regex": "(?:từ\\s*)?(?<a>{NUM})\\s*(?<ua>tỷ|tỉ|triệu|tr|m2|m²)?\\s*(?:đến|tới|-|–)\\s*(?<b>{NUM})\\s*(?<ub>tỷ|tỉ|triệu|tr|m2|m²|m|phòng ngủ|pn|wc|phòng tắm|toilet|tầng|lầu){NL}",
+    "units": {
+      "tỷ": [
+        "price",
+        1000000000
+      ],
+      "tỉ": [
+        "price",
+        1000000000
+      ],
+      "triệu": [
+        "price",
+        1000000
+      ],
+      "tr": [
+        "price",
+        1000000
+      ],
+      "m2": [
+        "area",
+        1
+      ],
+      "m²": [
+        "area",
+        1
+      ],
+      "m": [
+        "area",
+        1
+      ],
+      "phòng ngủ": [
+        "bedrooms",
+        1
+      ],
+      "pn": [
+        "bedrooms",
+        1
+      ],
+      "wc": [
+        "bathrooms",
+        1
+      ],
+      "phòng tắm": [
+        "bathrooms",
+        1
+      ],
+      "toilet": [
+        "bathrooms",
+        1
+      ],
+      "tầng": [
+        "floors",
+        1
+      ],
+      "lầu": [
+        "floors",
+        1
+      ]
+    }
+  },
+  "property_type_generic": [
+    "căn nhà",
+    "ngôi nhà",
+    "bán nhà"
+  ]
+}

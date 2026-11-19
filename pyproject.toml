@@ -1,0 +1,15 @@
+[project]
+name = "realestate-recommender"
+version = "1.0.0"
+description = "Trích xuất thông tin BĐS (PhoBERT + Rule Engine) -> Knowledge Graph -> gợi ý bằng LLM + WSM"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+realestate = ["rules/*.json", "web/*.html"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

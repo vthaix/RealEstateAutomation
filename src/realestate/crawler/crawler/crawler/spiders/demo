@@ -1,0 +1,141 @@
+import scrapy
+from crawler.items import RealestateItem
+
+
+class RealestateSpider(scrapy.Spider):
+
+    name = "realestate"
+
+    allowed_domains = ["radanhadat.vn"]
+
+    start_urls = [
+        "https://radanhadat.vn/mua-ban-nha-dat-toan-quoc"
+    ]
+
+    # ==========================================================
+    # 4 THAM SỐ CẤU HÌNH
+    # ==========================================================
+
+    # category_selector = ".item-nhadat"
+
+    # listing_selector = "a::attr(href)"
+
+    # detail_selector = ".primary.fll"
+
+    # exclude_selector = "#box-product-related"
+    category_selector = ".item-nhadat"
+    
+    listing_selector = "a::attr(href)"
+
+    detail_selector = ".primary.fll"
+
+    exclude_selector = "#box-product-related"
+
+    # ==========================================================
+    # HÀM CÀO DỮ LIỆU
+    # ==========================================================
+
+    def crawl_page(
+        self,
+        response,
+        category_selector,
+        listing_selector,
+        detail_selector,
+        exclude_selector
+    ):
+
+        # ------------------------------------------------------
+        # BƯỚC 1: LẤY DANH SÁCH LINK BẤT ĐỘNG SẢN
+        # ------------------------------------------------------
+
+        links = response.css(
+            category_selector
+        ).css(
+            listing_selector
+        ).getall()
+
+        # Xóa link trùng
+        links = list(dict.fromkeys(links))
+
+        self.logger.info(
+            "TOTAL LISTING LINKS: %s",
+            len(links)
+        )
+
+        # ------------------------------------------------------
+        # BƯỚC 2: ĐI VÀO TỪNG TRANG CHI TIẾT
+        # ------------------------------------------------------
+
+        for href in links:
+
+            url = response.urljoin(href)
+
+            yield scrapy.Request(
+                url=url,
+                callback=self.parse_detail,
+                cb_kwargs={
+                    "detail_selector": detail_selector,
+                    "exclude_selector": exclude_selector
+                }
+            )
+
+    # ==========================================================
+    # TRANG DANH MỤC
+    # ==========================================================
+
+    def parse(self, response):
+
+        yield from self.crawl_page(
+            response=response,
+            category_selector=self.category_selector,
+            listing_selector=self.listing_selector,
+            detail_selector=self.detail_selector,
+            exclude_selector=self.exclude_selector
+        )
+
+    # ==========================================================
+    # TRANG CHI TIẾT
+    # ==========================================================
+
+    def parse_detail(
+        self,
+        response,
+        detail_selector,
+        exclude_selector
+    ):
+
+        # Lấy vùng chi tiết BĐS
+        detail = response.css(detail_selector)
+
+        # ------------------------------------------------------
+        # LOẠI BỎ PHẦN KHÔNG MUỐN CÀO
+        # ------------------------------------------------------
+
+        if exclude_selector:
+
+            detail.css(
+                exclude_selector
+            ).drop()
+
+        # ------------------------------------------------------
+        # LẤY TOÀN BỘ TEXT
+        # ------------------------------------------------------
+
+        text = detail.css("::text").getall()
+
+        # Gom text
+        text = " ".join(text)
+
+        # Xóa khoảng trắng thừa
+        text = " ".join(text.split())
+
+        # ------------------------------------------------------
+        # TẠO ITEM
+        # ------------------------------------------------------
+
+        item = RealestateItem()
+
+        item["url"] = response.url
+        item["text"] = text
+
+        yield item

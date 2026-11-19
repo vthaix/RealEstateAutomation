@@ -1,0 +1,2 @@
+{"qid": "q1", "query": "Tôi cần một căn nhà ở Quận 3, diện tích 60 m2 thì càng tốt, phòng tắm có thể 2", "judgments": {"<property_id_1>": 3, "<property_id_2>": 2, "<property_id_3>": 0}}
+{"qid": "q2", "query": "căn hộ chung cư ở Hà Nội, tối đa 4 tỷ, 2 phòng ngủ, ưu tiên có ban công", "judgments": {"<property_id_4>": 3, "<property_id_5>": 1}}

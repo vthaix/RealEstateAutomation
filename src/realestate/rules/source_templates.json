@@ -1,0 +1,91 @@
+{
+  "_meta": {
+    "name": "source_templates",
+    "version": "1.0.0",
+    "description": "Mẫu bố cục trang của từng nguồn tin để tách phần bán cấu trúc (header/khối chi tiết) khỏi mô tả tự do. Thêm nguồn mới = thêm 1 phần tử vào 'sources'. Regex dùng cú pháp chung Python/JS như extraction_rules.json."
+  },
+  "placeholders": {
+    "NUM": "\\d+(?:[.,]\\d+)*"
+  },
+  "sources": [
+    {
+      "name": "bds.com.vn",
+      "match": {"url_contains": ["bds.com.vn"], "text_regex": " Thông tin mô tả "},
+      "description": {"start_after": " Thông tin mô tả ", "end_before": [" Tìm kiếm theo từ khóa:", " Lưu tin"]},
+      "categories": {
+        "Mua bán nhà riêng": ["sale", "house"],
+        "Mua bán nhà mặt phố": ["sale", "townhouse"],
+        "Mua bán nhà biệt thự liền kề": ["sale", "villa"],
+        "Mua bán căn hộ chung cư": ["sale", "apartment"],
+        "Mua bán đất nền dự án": ["sale", "project_land"],
+        "Mua bán đất": ["sale", "land"],
+        "Mua bán nhà đất": ["sale", "other"],
+        "Mua bán trang trại khu nghỉ dưỡng": ["sale", "resort"],
+        "Mua bán kho nhà xưởng": ["sale", "warehouse"],
+        "Cho thuê nhà riêng": ["rent", "house"],
+        "Cho thuê nhà mặt phố": ["rent", "townhouse"],
+        "Cho thuê căn hộ chung cư": ["rent", "apartment"],
+        "Cho thuê kho nhà xưởng": ["rent", "warehouse"],
+        "Cho thuê văn phòng": ["rent", "office"]
+      },
+      "category_regex": " (?<cat>{CATEGORIES}) (?<loc>[^:]+?) (?=(?:Giá|Diện tích|Ngày đăng) : )",
+      "header_fields": {
+        "price_text": "Giá : (?<v>.+?) (?=(?:Diện tích|Ngày đăng|Mã tin) : )",
+        "area": "Diện tích : (?<v>{NUM}) m2",
+        "posted_date": "Ngày đăng : (?<v>[\\d/]+)",
+        "listing_code": "Mã tin : (?<v>\\d+)",
+        "bedrooms": "Số phòng ngủ : (?<v>\\d+)",
+        "bathrooms": "Số toilet : (?<v>\\d+)",
+        "floors": "Tầng : (?<v>\\d+)"
+      },
+      "location": {
+        "type": "keyword_tail",
+        "regex": "Tìm kiếm theo từ khóa:(?<tail>.*)$",
+        "separator": "Mua bán nhà đất",
+        "levels": ["province", "district", "ward", "project"]
+      }
+    },
+    {
+      "name": "radanhadat.vn",
+      "match": {"url_contains": ["radanhadat"], "text_regex": "^\\d+/\\d+ Trang chủ"},
+      "description": {"start_after": " Tổng quan ", "end_before": [" Liên hệ ngay:", " Hiện số Chi tiết ", " Chi tiết Diện tích "]},
+      "transaction": [
+        {"regex": "Trang chủ Thuê", "value": "rent"},
+        {"regex": "Trang chủ (?:Mua|Bán)", "value": "sale"}
+      ],
+      "headline_regex": " (?<price>{NUM} ?(?:tỷ|triệu)(?:/tháng)?|Giá thoả thuận|Giá thỏa thuận)(?: \\(~(?<ppm>{NUM}) ?(?<ppm_unit>triệu|tỷ|nghìn)/m(?:²|2)\\))? (?<area>{NUM}) (?<area_unit>m 2|ha)\\s*•?\\s*(?<bed>\\d+|-) (?<wc>\\d+|-)",
+      "breadcrumb_prefix_regex": "^\\d+/\\d+ Trang chủ (?:Mua|Thuê|Bán) ",
+      "breadcrumb_types": [
+        ["Chung cư", "apartment"], ["Căn hộ", "apartment"], ["Biệt thự", "villa"], ["Liền kề", "villa"],
+        ["Nhà mặt phố", "townhouse"], ["Nhà mặt tiền", "townhouse"], ["Nhà phố", "townhouse"], ["Shophouse", "townhouse"],
+        ["Nhà riêng", "house"], ["Nhà ngõ", "house"], ["Nhà hẻm", "house"], ["Đất nền", "project_land"],
+        ["Đất", "land"], ["Kho", "warehouse"], ["Văn phòng", "office"], ["Nhà", "house"]
+      ],
+      "detail_block": {
+        "start": "Chi tiết Diện tích ",
+        "keys": {
+          "Diện tích": "area", "Pháp lý": "legal_text", "Số phòng ngủ": "bedrooms", "Hướng": "direction_text",
+          "Hẻm": "alley_text", "Rộng x Dài": "dims_text", "Số tầng": "floors", "Số toilet": "bathrooms",
+          "Mức giá": "price_text", "Giá đất": "price_per_m2_text", "Số căn hộ": "units", "Số toà": "towers",
+          "Hiện trạng": "project_status", "Tên dự án": "project", "Gói vay tham khảo": "_skip", "Thông tin dự án": "_skip"
+        },
+        "empty_values": ["-", ""],
+        "value_regex": {
+          "area": "^(?<v>{NUM}) (?<u>m|ha)",
+          "bedrooms": "^(?<v>\\d+)",
+          "bathrooms": "^(?<v>\\d+)",
+          "floors": "^(?<v>\\d+)",
+          "price_text": "^(?<v>{NUM} (?:tỷ|triệu))",
+          "price_per_m2_text": "^~(?<v>{NUM} (?:triệu|tỷ))/m(?:²|2)",
+          "project": "^(?<v>.{2,80}?)(?= Chủ đầu tư| Địa chỉ| Quy mô| Loại hình|$)"
+        },
+        "unit_multipliers": {"area": {"ha": 10000}}
+      },
+      "address": {
+        "regex": "Xem gói vay (?<addr>.+?) \\( Cũ \\)",
+        "province_token_regex": "(?:Thành phố|Tỉnh) [A-ZĐÀ-Ỹ][^ ,]*(?: [A-ZĐÀ-Ỹ][^ ,]*)*",
+        "street_prefixes": ["đường", "phố"]
+      }
+    }
+  ]
+}

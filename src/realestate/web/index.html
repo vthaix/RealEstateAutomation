@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gợi ý nhà ở</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2433; --muted:#667085; --line:#e4e7ec; --acc:#1f6feb;
+          --hard:#b42318; --soft:#027a48; --warn:#b54708; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 18px; }
+  .box { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  textarea { width:100%; min-height:84px; font:inherit; padding:10px; border:1px solid var(--line); border-radius:8px; resize:vertical; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  label { color:var(--muted); font-size:13px; } select, input[type=number] { font:inherit; padding:4px 6px; border:1px solid var(--line); border-radius:6px; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:9px 18px; font:inherit; cursor:pointer; }
+  button:disabled { opacity:.6; }
+  .examples span { display:inline-block; margin:6px 6px 0 0; padding:3px 10px; border:1px solid var(--line); border-radius:99px; cursor:pointer; font-size:13px; background:#fafbfc; }
+  table { width:100%; border-collapse:collapse; font-size:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; font-weight:600; }
+  .HARD { background:#fee4e2; color:var(--hard); } .SOFT { background:#d1fadf; color:var(--soft); }
+  .confirm { color:var(--warn); font-weight:600; }
+  .res { border:1px solid var(--line); border-radius:10px; padding:14px; margin-top:12px; background:var(--card); }
+  .res h3 { margin:0 0 4px; font-size:16px; } .res a { color:var(--acc); text-decoration:none; }
+  .meta { color:var(--muted); font-size:13px; } .score { float:right; text-align:right; }
+  .score b { font-size:20px; } .bar { height:6px; background:var(--line); border-radius:3px; width:120px; margin-top:4px; }
+  .bar i { display:block; height:100%; background:var(--acc); border-radius:3px; }
+  .expl { margin:8px 0 0; padding-left:0; list-style:none; font-size:14px; }
+  .aux { margin-top:8px; font-size:13px; color:var(--muted); }
+  .notes li { color:var(--warn); } .hidden { display:none; } .err { color:var(--hard); }
+  details summary { cursor:pointer; color:var(--muted); margin-top:16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tìm kiếm &amp; gợi ý nhà ở</h1>
+  <p class="sub">Mô tả nhu cầu bằng tiếng Việt tự nhiên. Hệ thống tách điều kiện bắt buộc (HARD) và mong muốn (SOFT), lọc rồi xếp hạng bằng WSM có giải thích.</p>
+
+  <div class="box">
+    <textarea id="q">Tôi cần một căn nhà ở Quận 3, diện tích 60 m2 thì càng tốt, phòng tắm có thể 2</textarea>
+    <div class="examples" id="ex"></div>
+    <div class="row">
+      <label>Trọng số <select id="weighting"><option value="priority">theo mức ưu tiên</option><option value="equal">bằng nhau</option></select></label>
+      <label>Bộ phân tích <select id="parser"><option value="auto">tự động (LLM → luật)</option><option value="llm">LLM</option><option value="rule">luật</option></select></label>
+      <label>λ bổ trợ <input id="lambda" type="number" min="0" max="0.5" step="0.05" value="0"></label>
+      <label>Top <input id="topk" type="number" min="1" max="50" value="10"></label>
+      <button id="go">Tìm nhà</button>
+    </div>
+  </div>
+
+  <div id="err" class="err"></div>
+  <div id="parsed" class="box hidden"></div>
+  <div id="results"></div>
+  <details id="insuf" class="hidden"><summary></summary><div id="insufList"></div></details>
+</main>
+<script>
+const EXAMPLES = [
+  "Tìm căn hộ chung cư ở Hà Nội, tối đa 4 tỷ, 2 phòng ngủ, ưu tiên có ban công",
+  "Nhà riêng Quận 12 hoặc Gò Vấp giá khoảng 5 tỷ, 4x15m càng tốt, sổ hồng riêng bắt buộc",
+  "Bán nhà mặt tiền Đà Nẵng từ 8 đến 12 tỷ, hướng Đông Nam rất quan trọng, 3 tầng",
+  "Đất nền Bình Dương dưới 2 tỷ, diện tích tầm 100m2",
+];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtVnd = v => v == null ? "?" : v >= 1e9 ? (v/1e9).toLocaleString("vi-VN",{maximumFractionDigits:2})+" tỷ" : (v/1e6).toLocaleString("vi-VN",{maximumFractionDigits:0})+" triệu";
+const ATTR = {location:"Địa điểm",price:"Giá",area:"Diện tích",bedrooms:"Phòng ngủ",bathrooms:"Phòng tắm/WC",floors:"Số tầng",frontage:"Chiều ngang",direction:"Hướng",legal_status:"Pháp lý",property_type:"Loại hình",transaction_type:"Giao dịch",position:"Vị trí",feature:"Tiện ích"};
+const LEVEL = {VERY_HIGH:"rất quan trọng (5)",HIGH:"quan trọng (4)",MEDIUM:"mong muốn rõ (3)",LOW:"có thì tốt (2)",VERY_LOW:"ưu tiên thấp (1)"};
+
+EXAMPLES.forEach(e => { const s = document.createElement("span"); s.textContent = e; s.onclick = () => { $("q").value = e; run(); }; $("ex").appendChild(s); });
+
+function target(c) {
+  const f = v => c.attribute === "price" ? fmtVnd(v) : c.attribute === "area" ? v + " m²" : Array.isArray(v) ? v.join(", ") : v;
+  if (c.operator === "RANGE") return `${f(c.target_min)} – ${f(c.target_max)}`;
+  return `${c.operator} ${f(c.target_value)}`;
+}
+
+function renderParsed(data) {
+  const pq = data.parsed_query;
+  const w = data.weights; let si = 0;
+  const rows = pq.criteria.map(c => {
+    let weight = "—";
+    if (c.group === "SOFT") { const key = Object.keys(w)[si++]; weight = key ? w[key].toFixed(2) : "—"; }
+    return `<tr><td>${ATTR[c.attribute] || c.attribute}</td><td>${esc(target(c))}</td>
+      <td><span class="tag ${c.group}">${c.group}</span></td><td>${c.preference_level ? LEVEL[c.preference_level] : "—"}</td>
+      <td>${weight}</td><td>${c.confidence.toFixed(2)}${c.needs_confirmation ? ' <span class="confirm">cần xác nhận</span>' : ""}</td>
+      <td>“${esc(c.evidence_span)}”${c.note ? `<div class="meta">${esc(c.note)}</div>` : ""}</td></tr>`;
+  }).join("");
+  const notes = [...(pq.warnings||[]), ...(data.notes||[])].map(n => `<li>${esc(n)}</li>`).join("");
+  $("parsed").innerHTML = `<b>Tiêu chí đã phân tích</b> <span class="meta">(bộ phân tích: ${pq.parser}; trọng số: ${data.weighting}; λ=${data.lambda_aux}; xếp hạng: ${data.ranking_mode})</span>
+    <div style="overflow-x:auto"><table><tr><th>Thuộc tính</th><th>Giá trị / toán tử</th><th>Nhóm</th><th>Mức ưu tiên</th><th>Trọng số</th><th>Tin cậy</th><th>Bằng chứng</th></tr>${rows || '<tr><td colspan=7>Không có tiêu chí</td></tr>'}</table></div>
+    <p class="meta">Ứng viên: ${data.total_candidates} · Thỏa điều kiện bắt buộc: ${data.total_passed_hard} · Chưa đủ dữ liệu xác minh: ${data.insufficient_data.length}+</p>
+    ${notes ? `<ul class="notes">${notes}</ul>` : ""}`;
+  $("parsed").classList.remove("hidden");
+}
+
+function card(r, i) {
+  const p = r.property;
+  const loc = [p.street, p.ward, p.district, p.province].filter(Boolean).join(", ");
+  const facts = [p.price_vnd && fmtVnd(p.price_vnd), p.area_m2 && p.area_m2 + " m²", p.bedrooms && p.bedrooms + " PN",
+                 p.bathrooms && p.bathrooms + " WC", p.floors && p.floors + " tầng"].filter(Boolean).join(" · ");
+  const score = r.score == null ? `<div class="meta">không xếp hạng<br>cá nhân hóa</div>`
+    : `<b>${(r.score*100).toFixed(0)}</b>/100<div class="bar"><i style="width:${r.score*100}%"></i></div><div class="meta">độ bao phủ ${(r.coverage*100).toFixed(0)}%</div>`;
+  const aux = Object.entries(r.auxiliary || {}).map(([k,v]) => `${k}: ${esc(v)}`).join(" · ");
+  return `<div class="res"><div class="score">${score}</div>
+    <h3>${i+1}. <a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title || p.id)}</a></h3>
+    <div class="meta">${esc(loc)}</div><div>${esc(facts)}</div>
+    <ul class="expl">${(r.explanation||[]).map(e => `<li>${esc(e)}</li>`).join("")}</ul>
+    ${aux ? `<div class="aux">Thông tin bổ trợ (không tính điểm): ${aux}</div>` : ""}</div>`;
+}
+
+async function run() {
+  $("go").disabled = true; $("err").textContent = ""; $("results").innerHTML = "Đang xử lý…";
+  try {
+    const res = await fetch("/api/recommend", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ query:$("q").value, weighting:$("weighting").value, parser:$("parser").value,
+                             lambda_aux: parseFloat($("lambda").value)||0, top_k: parseInt($("topk").value)||10 }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    renderParsed(data);
+    $("results").innerHTML = data.results.length ? data.results.map(card).join("") : '<div class="box">Không có tin nào thỏa tất cả điều kiện bắt buộc.</div>';
+    const ins = data.insufficient_data;
+    $("insuf").classList.toggle("hidden", !ins.length);
+    $("insuf").querySelector("summary").textContent = `Nhóm “chưa đủ dữ liệu để xác minh điều kiện bắt buộc” (${ins.length})`;
+    $("insufList").innerHTML = ins.map(card).join("");
+  } catch (e) { $("err").textContent = "Lỗi: " + e.message; $("results").innerHTML = ""; }
+  finally { $("go").disabled = false; }
+}
+$("go").onclick = run;
+</script>
+</body>
+</html>
