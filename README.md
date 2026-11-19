@@ -348,3 +348,5 @@ WHERE p.price_vnd <= 10e9 RETURN p.title, p.price_vnd, p.area_m2 LIMIT 20
 
 * Đề cương ghi Knowledge Graph nằm ngoài phạm vi chính; theo yêu cầu, hệ thống lưu trữ bằng KG (NetworkX + Neo4j). Mọi thông tin cần cho lọc/xếp hạng nằm trên node `Property`, nên có thể thay bằng CSDL quan hệ mà không đổi bộ xếp hạng.
 * Kết quả chỉ hỗ trợ tìm kiếm; không xác nhận pháp lý, giá trị giao dịch. Số điện thoại/email được ẩn trước khi xử lý.
+#   R e a l E s t a t e A u t o m a t i o n  
+ 
