@@ -79,16 +79,20 @@ function target(c) {
 
 function renderParsed(data) {
   const pq = data.parsed_query;
-  const w = data.weights; let si = 0;
+  // Thứ tự chấm điểm khớp backend: SOFT trước, rồi HARD có giá trị số (giá, diện tích, số phòng, tầng, mặt tiền)
+  const NUM = ["price", "area", "bedrooms", "bathrooms", "floors", "frontage"];
+  const scored = [...pq.criteria.filter(c => c.group === "SOFT"),
+                  ...pq.criteria.filter(c => c.group === "HARD" && NUM.includes(c.attribute))];
+  const wvals = Object.values(data.weights);
   const rows = pq.criteria.map(c => {
-    let weight = "—";
-    if (c.group === "SOFT") { const key = Object.keys(w)[si++]; weight = key ? w[key].toFixed(2) : "—"; }
+    const k = scored.indexOf(c);
+    const weight = k >= 0 && wvals[k] !== undefined ? wvals[k].toFixed(2) : "—";
     return `<tr><td>${ATTR[c.attribute] || c.attribute}</td><td>${esc(target(c))}</td>
       <td><span class="tag ${c.group}">${c.group}</span></td><td>${c.preference_level ? LEVEL[c.preference_level] : "—"}</td>
       <td>${weight}</td><td>${c.confidence.toFixed(2)}${c.needs_confirmation ? ' <span class="confirm">cần xác nhận</span>' : ""}</td>
       <td>“${esc(c.evidence_span)}”${c.note ? `<div class="meta">${esc(c.note)}</div>` : ""}</td></tr>`;
   }).join("");
-  const notes = [...(pq.warnings||[]), ...(data.notes||[])].map(n => `<li>${esc(n)}</li>`).join("");
+  const notes = [...new Set([...(pq.warnings||[]), ...(data.notes||[])])].map(n => `<li>${esc(n)}</li>`).join("");
   $("parsed").innerHTML = `<b>Tiêu chí đã phân tích</b> <span class="meta">(bộ phân tích: ${pq.parser}; trọng số: ${data.weighting}; λ=${data.lambda_aux}; xếp hạng: ${data.ranking_mode})</span>
     <div style="overflow-x:auto"><table><tr><th>Thuộc tính</th><th>Giá trị / toán tử</th><th>Nhóm</th><th>Mức ưu tiên</th><th>Trọng số</th><th>Tin cậy</th><th>Bằng chứng</th></tr>${rows || '<tr><td colspan=7>Không có tiêu chí</td></tr>'}</table></div>
     <p class="meta">Ứng viên: ${data.total_candidates} · Thỏa điều kiện bắt buộc: ${data.total_passed_hard} · Chưa đủ dữ liệu xác minh: ${data.insufficient_data.length}+</p>

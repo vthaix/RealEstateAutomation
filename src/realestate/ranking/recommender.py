@@ -11,7 +11,7 @@ from ..kg.store import KnowledgeGraph
 from ..query import QueryParser
 from ..schemas import Group, Operator, ParsedQuery, PropertyRecord, RankedResult, RecommendationResponse
 from .explain import explain
-from .utility import check_hard
+from .utility import check_hard, is_graded_hard
 from .wsm import aux_score, compute_weights, score_property
 
 
@@ -30,9 +30,12 @@ class Recommender:
         weighting = weighting or self.weighting
         lam = self.lambda_aux if lambda_aux is None else lambda_aux
         pq = query if isinstance(query, ParsedQuery) else self.parser.parse(query, mode=parser_mode)
-        hard, soft = pq.hard, pq.soft
+        hard = pq.hard
+        # Tiêu chí chấm điểm = SOFT + HARD "càng tốt hơn càng được điểm" (vd diện tích >= 60m2, giá <= 5 tỷ).
+        # HARD đạt/không đạt (quận, thành phố, loại hình...) chỉ dùng để lọc.
+        soft = pq.soft + [c for c in hard if is_graded_hard(c)]
         mentioned = pq.mentioned_attributes
-        notes: list[str] = []
+        notes: list[str] = list(pq.warnings)
 
         # 1) Ứng viên từ Knowledge Graph theo ràng buộc địa điểm bắt buộc
         loc_targets = [str(t) for c in hard if c.attribute == "location" and c.operator == Operator.IN_AREA

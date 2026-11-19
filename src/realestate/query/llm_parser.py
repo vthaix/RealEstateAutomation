@@ -35,6 +35,8 @@ Quy tắc quan trọng:
 2. Không suy diễn thuộc tính người dùng không nói (không tự thêm hướng, pháp lý, số tầng...).
 3. "Nhà", "căn nhà" chung chung không phải là ràng buộc loại hình; chỉ đặt property_type khi người dùng nói rõ (căn hộ, chung cư, nhà phố, biệt thự, đất nền...).
 4. Không gán preference_level khi không có từ ngữ chỉ mức độ.
+4b. Tiêu chí dạng xấp xỉ ("khoảng", "tầm", "xấp xỉ") là SOFT, trừ khi người dùng nói rõ bắt buộc.
+5. Nếu người dùng nêu một mong muốn/điều kiện mà KHÔNG có attribute nào phù hợp (ví dụ "gần trung tâm", "gần trường học", "yên tĩnh", "view đẹp"), ĐỪNG bỏ qua âm thầm: ghi nguyên văn cụm đó vào mảng "unsupported" (không tạo tiêu chí). Câu "hay không cũng được" / "sao cũng được" nghĩa là không ràng buộc: không tạo tiêu chí và không ghi vào unsupported.
 """
 
 CRITERION_SCHEMA = {
@@ -61,18 +63,38 @@ CRITERION_SCHEMA = {
 }
 OUTPUT_SCHEMA = {
     "type": "object",
-    "properties": {"criteria": {"type": "array", "items": CRITERION_SCHEMA}},
-    "required": ["criteria"],
+    "properties": {"criteria": {"type": "array", "items": CRITERION_SCHEMA},
+                   "unsupported": {"type": "array", "items": {"type": "string"}}},
+    "required": ["criteria", "unsupported"],
     "additionalProperties": False,
 }
 
 
+DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
+
+
+def _llm_settings() -> tuple[Optional[str], str, str]:
+    """(api_key, base_url, provider). provider: openai (tương thích OpenAI: Groq, OpenAI, OpenRouter, ...) | anthropic."""
+    import os
+
+    key = os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY") or None
+    provider = (os.getenv("LLM_PROVIDER") or "").lower()
+    if not key and (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
+        provider = provider or "anthropic"
+    return key, (os.getenv("LLM_BASE_URL") or DEFAULT_BASE_URL).rstrip("/"), provider or "openai"
+
+
 class LLMQueryParser:
     def __init__(self, model: str = "claude-opus-5-5", effort: str = "low", client=None):
-        import anthropic  # phụ thuộc tùy chọn
+        key, self.base_url, provider = _llm_settings()
+        self.api_key = None if client or provider == "anthropic" else key
+        if self.api_key:  # API kiểu OpenAI, gọi qua httpx
+            self.client = None
+        else:
+            import anthropic  # phụ thuộc tùy chọn
 
-        self.anthropic = anthropic
-        self.client = client or anthropic.Anthropic()
+            self.anthropic = anthropic
+            self.client = client or anthropic.Anthropic()
         self.model = model
         self.effort = effort
         from ..rules.loader import lexicon_labels
@@ -90,6 +112,8 @@ class LLMQueryParser:
         if location_hints:
             user += ("\n\nMột số địa danh có trong kho dữ liệu (chỉ để chuẩn hóa cách viết, không được tự thêm "
                      "địa điểm người dùng không nói): " + ", ".join(location_hints[:80]))
+        if self.api_key:
+            return self._parse_openai_compatible(query, user)
         resp = self.client.beta.messages.create(
             model=self.model,
             max_tokens=4096,
@@ -106,4 +130,26 @@ class LLMQueryParser:
             raise RuntimeError("LLM trả về JSON bị cắt (max_tokens)")
         text = next(b.text for b in resp.content if b.type == "text")
         data = json.loads(text)
-        return ParsedQuery.model_validate({"query": query, "criteria": data.get("criteria", []), "parser": "llm"})
+        return ParsedQuery.model_validate({"query": query, "criteria": data.get("criteria", []), "parser": "llm",
+             "warnings": [f"Chưa hỗ trợ tiêu chí: \"{u}\" — không dùng để lọc/xếp hạng." for u in data.get("unsupported", [])]})
+
+    def _parse_openai_compatible(self, query: str, user: str) -> ParsedQuery:
+        import httpx
+
+        r = httpx.post(
+            f"{self.base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            json={
+                "model": self.model,
+                "messages": [{"role": "system", "content": self.system}, {"role": "user", "content": user}],
+                "temperature": 0,
+                "max_completion_tokens": 4096,
+                "response_format": {"type": "json_schema", "json_schema": {
+                    "name": "parsed_query", "strict": True, "schema": OUTPUT_SCHEMA}},
+            },
+            timeout=60,
+        )
+        r.raise_for_status()
+        data = json.loads(r.json()["choices"][0]["message"]["content"])
+        return ParsedQuery.model_validate({"query": query, "criteria": data.get("criteria", []), "parser": "llm",
+             "warnings": [f"Chưa hỗ trợ tiêu chí: \"{u}\" — không dùng để lọc/xếp hạng." for u in data.get("unsupported", [])]})

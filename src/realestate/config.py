@@ -59,7 +59,7 @@ class Settings:
 
     @property
     def has_llm_credentials(self) -> bool:
-        return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"))
+        return bool(os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"))
 
 
 settings = Settings()

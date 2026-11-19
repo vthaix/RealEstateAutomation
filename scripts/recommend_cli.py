@@ -33,7 +33,7 @@ if __name__ == "__main__":
               f"min={c.target_min} max={c.target_max} level={c.preference_level and c.preference_level.value} "
               f"conf={c.confidence}{'  (cần xác nhận)' if c.needs_confirmation else ''}")
     print("  weights:", json.dumps(res.weights, ensure_ascii=False))
-    for n in res.notes + res.parsed_query.warnings:
+    for n in dict.fromkeys(res.notes + res.parsed_query.warnings):
         print("  !", n)
     print(f"\n== {res.total_passed_hard}/{res.total_candidates} tin thỏa điều kiện bắt buộc ==")
     for i, r in enumerate(res.results, 1):

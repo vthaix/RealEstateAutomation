@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..schemas import PREFERENCE_RANK, Criterion, CriterionScore, PreferenceLevel, PropertyRecord
-from .utility import utility
+from ..schemas import PREFERENCE_RANK, Criterion, CriterionScore, Group, PreferenceLevel, PropertyRecord
+from .utility import hard_utility, utility
 
 DEFAULT_RANK_WHEN_MISSING = PREFERENCE_RANK[PreferenceLevel.MEDIUM]
 
@@ -19,16 +19,21 @@ DEFAULT_RANK_WHEN_MISSING = PREFERENCE_RANK[PreferenceLevel.MEDIUM]
 AUX_ATTRIBUTES = ["price", "area", "bedrooms", "bathrooms", "floors", "frontage", "direction", "legal_status"]
 
 
+HARD_WEIGHT_FACTOR = 0.5  # HARD có giá trị số tham gia tính điểm nhưng nhẹ hơn sở thích SOFT
+
+
 def compute_weights(soft: list[Criterion], mode: str = "priority") -> tuple[list[float], str]:
+    """`soft` = tiêu chí được chấm điểm (SOFT + HARD số). HARD không có preference_level nên lấy mức
+    mặc định rồi nhân HARD_WEIGHT_FACTOR."""
     n = len(soft)
     if n == 0:
         return [], "none"
     levels = [c.preference_level for c in soft]
-    if mode == "equal" or all(lv is None for lv in levels) or len({lv for lv in levels}) == 1:
-        return [1.0 / n] * n, "equal"
-    ranks = [PREFERENCE_RANK[lv] if lv else DEFAULT_RANK_WHEN_MISSING for lv in levels]
+    uniform = mode == "equal" or all(lv is None for lv in levels) or len({lv for lv in levels}) == 1
+    ranks = [1.0 if uniform else (PREFERENCE_RANK[lv] if lv else DEFAULT_RANK_WHEN_MISSING) for lv in levels]
+    ranks = [r * HARD_WEIGHT_FACTOR if c.group == Group.HARD else r for r, c in zip(ranks, soft)]
     total = sum(ranks)
-    return [r / total for r in ranks], "priority"
+    return [r / total for r in ranks], "equal" if uniform else "priority"
 
 
 def aux_score(rec: PropertyRecord, mentioned: set[str]) -> float:
@@ -46,7 +51,7 @@ def score_property(rec: PropertyRecord, soft: list[Criterion], weights: list[flo
     s_explicit = 0.0
     coverage = 0.0
     for c, w in zip(soft, weights):
-        s = utility(c, rec)
+        s = hard_utility(c, rec) if c.group == Group.HARD else utility(c, rec)
         contrib = w * (s if s is not None else missing_score)
         s_explicit += contrib
         if s is not None:

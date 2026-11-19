@@ -156,3 +156,31 @@ def utility(c: Criterion, rec: PropertyRecord) -> Optional[float]:
     if s is None:
         return None
     return 1.0 - s if c.operator == Operator.NOT_IN else s
+
+
+GRADED_ATTRS = ("price", "area", "bedrooms", "bathrooms", "floors", "frontage")
+
+
+def is_graded_hard(c: Criterion) -> bool:
+    """HARD có giá trị số tính toán được (giá, diện tích, số phòng, tầng, mặt tiền) -> vẫn tham gia tính điểm.
+    HARD thuộc loại danh mục / địa điểm (quận, thành phố, loại hình, pháp lý...) -> chỉ lọc, không tính điểm."""
+    return c.attribute in GRADED_ATTRS
+
+
+def hard_utility(c: Criterion, rec: PropertyRecord) -> Optional[float]:
+    """Điểm của tiêu chí HARD đã đạt. GTE/LTE: theo mức vượt ngưỡng (margin_utility);
+    EQ/RANGE/APPROX: theo độ sát giá trị đích (utility)."""
+    if c.operator in (Operator.GTE, Operator.LTE):
+        return margin_utility(c, rec)
+    return utility(c, rec)
+
+
+def margin_utility(c: Criterion, rec: PropertyRecord) -> Optional[float]:
+    """Điểm cho tiêu chí HARD đã đạt: đúng ngưỡng = 0.5, vượt ngưỡng một dung sai trở lên = 1.0.
+    GTE: lớn hơn tốt hơn (diện tích >= 60); LTE: nhỏ hơn tốt hơn (giá <= 5 tỷ)."""
+    x = rec.get(c.attribute)
+    t = numeric_target(c)
+    if x is None or t is None:
+        return None
+    gap = (x - t) if c.operator == Operator.GTE else (t - x)
+    return 0.5 + 0.5 * max(0.0, min(1.0, gap / tolerance(c.attribute, t)))
